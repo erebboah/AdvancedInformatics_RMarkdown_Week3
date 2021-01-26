@@ -1,0 +1,147 @@
+---
+title: "Advanced Informatics Week 3 lab"
+output: html_document
+---
+
+## dplyr
+
+```{r setup, include=FALSE}
+library(reticulate)
+library(printr)
+use_python("/Users/liz/miniconda3/envs/new_env/bin/python",required = T)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Working with small dataset by loading into memory
+```{r results='asis'}
+data(mtcars)
+help(mtcars)
+```
+
+The first several rows are:
+```{r}
+head(mtcars)
+```
+
+Group mtcars by `cyl` and get the mean `mpg` (first example):
+```{r}
+aggregate(mpg ~ cyl, data=mtcars, mean)
+```
+
+Get mean `mpg` for all `(cyl, gear)` combinations (second example):
+```{r}
+aggregate(mpg ~ cyl + gear, data=mtcars, mean)
+```
+
+The `dplyr` version of the first example:
+```{r collapse = TRUE}
+library(dplyr)
+results = mtcars %>%
+    group_by(cyl) %>%
+    summarise(mean_mpg = mean(mpg))
+results
+```
+
+The `dplyr` version of the second example:
+```{r collapse = TRUE}
+results = mtcars %>%
+    group_by(cyl, gear) %>%
+    summarise(mean_mpg = mean(mpg))
+as.data.frame(results)
+```
+
+### Working with the same dataset in a relational database
+
+Get data into an `sqlite3` database:
+```{r collapse = TRUE}
+library(dbplyr)
+# Create a connection ("con") to a database file:
+con <- DBI::dbConnect(RSQLite::SQLite(), "/Users/liz/Documents/AdvancedInformatics_RMarkdownWeek3/mtcars.sqlite3")
+# Write our data frame to the database in a table called "mtcars"
+DBI::dbWriteTable(con, "mtcars", mtcars, overwrite = T)
+# Disconnect from our database
+DBI::dbDisconnect(con)
+```
+
+```{bash, engine.opts='-l', collapse=TRUE}
+ls -lhrt /Users/liz/Documents/AdvancedInformatics_RMarkdown/*.sqlite3
+```
+
+##### Analyze database using dplyr
+```{r}
+con <- DBI::dbConnect(RSQLite::SQLite(), "mtcars.sqlite3")
+mtcars2 <- tbl(con, "mtcars")
+g = mtcars2 %>% 
+    group_by(cyl) %>%
+    summarise(mean_mpg=mean(mpg))
+```
+
+```{r, collapse=TRUE}
+g %>% show_query()
+```
+
+```{r}
+result = g %>% collect()
+as.data.frame(result)
+```
+
+## Python 
+
+### Working with small dataset by loading into memory
+
+Get `mtcars` into Python:
+```{python, collapse=TRUE}
+mtcars = r.mtcars
+print(mtcars.head())
+```
+
+```{r, echo=F}
+if (file.exists("/Users/liz/Documents/AdvancedInformatics_RMarkdownWeek3/mtcars_from_pandas.sqlite3"))
+{
+    file.remove("/Users/liz/Documents/AdvancedInformatics_RMarkdownWeek3/mtcars_from_pandas.sqlite3")
+}
+```
+
+Repeat split/apply/combine analysis example 1 in Python:
+```{python, collapse=TRUE}
+mtcars.groupby(['cyl'])['mpg'].mean()
+```
+
+Repeat example 2 in Python:
+```{python, collapse=TRUE}
+mtcars.groupby(['cyl', 'gear'])['mpg'].mean()
+```
+
+### Working with the same dataset in a relational database
+
+#### Analyze database with pandas
+```{python}
+import sqlite3 # Built into the Python language!
+con = sqlite3.connect("/Users/liz/Documents/AdvancedInformatics_RMarkdownWeek3/mtcars_from_pandas.sqlite3")
+# Add our data frame to the mtcars table in the database
+mtcars.to_sql("mtcars", con)
+con.close()
+```
+
+Checking that it worked:
+```{bash, engine.opts='-l', collapse=TRUE}
+ls -lhrt /Users/liz/Documents/AdvancedInformatics_RMarkdown/*.sqlite3
+```
+
+#### Reading it back in
+```{python, collapse=TRUE}
+import pandas as pd
+
+con = sqlite3.connect("/Users/liz/Documents/AdvancedInformatics_RMarkdownWeek3/mtcars_from_pandas.sqlite3")
+df = pd.read_sql("select * from mtcars", con)
+print(df.head())
+```
+
+Have to use raw `SQL` in Python...most of the time `dplyr` is easier.
+```{python, collapse=TRUE}
+df = pd.read_sql("select cyl, avg(mpg) from mtcars group by cyl", con)
+print(df.head())
+df = pd.read_sql("select cyl, gear, avg(mpg) from mtcars group by cyl, gear", con)
+print(df.head())
+```
+
